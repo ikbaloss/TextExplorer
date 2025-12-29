@@ -2,6 +2,8 @@ This HTML app can be used to explore text through keyword-in-context (KWIC) anal
 
 You can also add a stopword file and configure the graph to display only non-stopwords by toggling the stopword option.
 
+The app can be accessed directly at: https://ikbaloss.github.io/TextExplorer/
+
 You can cite the application by coppying this bibtext:
 ```
 @software{maulana_textexplorer_2025,
