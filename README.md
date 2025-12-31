@@ -10,7 +10,7 @@ You can cite the application by coppying this bibtext:
     address = {Jakarta},
     title = {{Text Explorer Version 1.0}},
     type = {Computer software},
-    url = {https://github.com/ikbaloss/TextExplorer},
+    url = {https://ikbaloss.github.io/TextExplorer/},
     author = {Maulana, Ikbal},
     year = {2025},
     institution = {National Research and Innovation Agency (BRIN)},
