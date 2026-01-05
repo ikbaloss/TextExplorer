@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Word Tree - v63</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        :root { --primary: #2563eb; --bg: #f3f4f6; --border: #d1d5db; --root-bg: #fef3c7; --root-stroke: #d97706; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg); display: flex; flex-direction: column; min-height: 100vh; }
+        #app-container { display: flex; flex-grow: 1; position: relative; }
+        #history-sidebar { width: 250px; background: #fff; border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: 0.3s; position: sticky; top: 110px; height: calc(100vh - 110px); z-index: 50; }
+        #history-sidebar.hidden { width: 0; border: none; opacity: 0; pointer-events: none; }
+        .top-nav { background: #fff; padding: 12px 20px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1000; box-shadow: 0 2px 5px rgba(0,0,0,0.08); }
+        .menu-row { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; margin-bottom: 8px; }
+        .control-group { display: flex; flex-direction: column; }
+        label { font-size: 10px; font-weight: bold; color: #666; text-transform: uppercase; margin-bottom: 3px; }
+        input, select { padding: 5px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; height: 32px; background: white; }
+        button { padding: 0 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 12px; height: 32px; transition: 0.2s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-save { background: #64748b; color: white; }
+        .btn-toggle { background: #e2e8f0; color: #475569; border: 1px solid var(--border); }
+        .btn-toggle.active { background: #475569; color: white; border-color: #334155; }
+        #viewport { background: #cbd5e1; height: 850px; position: relative; border-bottom: 2px solid var(--border); overflow: hidden; }
+        svg#wordTree { width: 100%; height: 100%; display: block; background: white; }
+        .concordance-wrapper { padding: 50px; background: #fff; }
+        .table-controls { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 15px; gap: 20px; }
+        .search-box { flex-grow: 1; max-width: 400px; }
+        .search-box input { width: 100%; box-sizing: border-box; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { background: #f8fafc; text-align: left; padding: 15px; border-bottom: 2px solid var(--border); font-size: 11px; text-transform: uppercase; color: #64748b; }
+        td { padding: 12px 15px; border-bottom: 1px solid #f1f5f9; }
+        .col-left { text-align: right; width: 35%; color: #94a3b8; }
+        .col-focus { text-align: center; font-weight: bold; color: #e11d48; background: #fff1f2; }
+        .col-right { text-align: left; width: 35%; color: #94a3b8; }
+    </style>
+</head>
+<body>
+
+<div class="top-nav">
+    <div class="menu-row">
+        <button onclick="document.getElementById('history-sidebar').classList.toggle('hidden')" style="background:#4b5563; color:white;">📜 HISTORY</button>
+        <div class="control-group"><label>Files</label><input type="file" id="fileInput" multiple></div>
+        <div class="control-group"><label>Stopwords</label><input type="file" id="stopwordInput"></div>
+        <div class="control-group" style="width:45px;"><label>BR</label><input type="number" id="maxBranches" value="3"></div>
+        <div class="control-group" style="width:45px;"><label>SPAN</label><input type="number" id="windowSpan" value="5"></div>
+        <div class="control-group"><label>&nbsp;</label><label style="display:flex; align-items:center; gap:4px; font-size:10px; font-weight:bold; cursor:pointer;"><input type="checkbox" id="hideStopwords" onchange="updateTopNGrams()"> HIDE STOPWORDS</label></div>
+    </div>
+    <div class="menu-row">
+        <div class="control-group"><label>NGRAM SIZE</label>
+            <select id="ngramSize" onchange="updateTopNGrams()">
+                <option value="1">1-Gram</option><option value="2">2-Gram</option><option value="3">3-Gram</option><option value="4">4-Gram</option>
+            </select>
+        </div>
+        <div class="control-group"><label>TOP NGRAMS (Top 50)</label>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <select id="topNgramSelect" style="width:200px;" onchange="handleTopSelect(this.value)"><option>Upload files...</option></select>
+                <label style="display:flex; align-items:center; gap:4px; font-size:10px; font-weight:bold; cursor:pointer;"><input type="checkbox" id="sortFreq" checked onchange="updateTopNGrams()"> SORT BY FREQ</label>
+            </div>
+        </div>
+        <div class="control-group"><label>KEYWORD</label><input type="text" id="keyword" placeholder="Enter word..."></div>
+        <div class="control-group" style="width:100px;"><label>FONT SIZE</label><input type="range" id="fontSizeSlider" min="8" max="24" value="12" oninput="updateFontSize(this.value)"></div>
+        <button class="btn-primary" onclick="processText(true)">GENERATE</button>
+        <button class="btn-success" onclick="saveAsPNG()">PNG</button>
+        <button class="btn-save" onclick="saveTopNgrams()">SAVE NGRAM</button>
+    </div>
+</div>
+
+<div id="app-container">
+    <div id="history-sidebar" class="hidden">
+        <div style="padding:15px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between;"><h2>History</h2><button onclick="clearHistory()" style="font-size:9px;">Clear</button></div>
+        <ul id="history-list" style="list-style:none; padding:0; margin:0; overflow-y:auto;"></ul>
+    </div>
+    <div id="workspace" style="flex-grow:1; display:flex; flex-direction:column;">
+        <div id="viewport"><svg id="wordTree"></svg></div>
+        <div class="concordance-wrapper">
+            <div class="table-controls">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <h2 style="margin:0;">Concordance <small id="matchCount" style="color:#666; font-size:14px;"></small></h2>
+                    <button id="groupToggle" class="btn-toggle" onclick="toggleFileSort()">📁 GROUP BY FILE</button>
+                </div>
+                <div class="search-box"><input type="text" id="tableSearch" placeholder="Find in results..." oninput="renderTable()"></div>
+                <button class="btn-save" onclick="saveToCSV()" style="background:#8b5cf6;">Export CSV</button>
+            </div>
+            <table>
+                <thead><tr><th>Source</th><th class="col-left">Left Context</th><th class="col-focus">Focus Phrase</th><th class="col-right">Right Context</th></tr></thead>
+                <tbody id="concordanceBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+let preprocessedData = [], currentMatches = [], stopWords = new Set(), historyArr = [], isFileSorted = false;
+let clickTimer = null; // Global timer for click debouncing
+const zoom = d3.zoom().on("zoom", (e) => d3.select("#main-g").attr("transform", e.transform));
+
+function isValidWord(word) {
+    if (!word) return false;
+    if (!/^[A-Za-z0-9\-_]+$/.test(word)) return false;
+    if (/^[\-_]/.test(word) || /[\-_]$/.test(word)) return false;
+    return true;
+}
+
+document.getElementById('fileInput').onchange = async (e) => {
+    preprocessedData = [];
+    for (let file of e.target.files) {
+        const text = await file.text();
+        text.split(/[.!?\n]+/).forEach(s => {
+            const rawTokens = s.trim().split(/\s+/).filter(t => t);
+            const tokens = [], norm = [];
+            rawTokens.forEach(t => {
+                let clean = t.replace(/^[.,!?;:"]+|[.,!?;:"]+$/g, "");
+                if (isValidWord(clean)) { tokens.push(clean); norm.push(clean.toLowerCase()); }
+            });
+            if (tokens.length) preprocessedData.push({ fileName: file.name, tokens, norm });
+        });
+    }
+    updateTopNGrams();
+};
+
+document.getElementById('stopwordInput').onchange = (e) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        stopWords = new Set(ev.target.result.split(/\n/).map(w => w.trim().toLowerCase()));
+        updateTopNGrams();
+        if(document.getElementById('keyword').value) processText(false);
+    };
+    reader.readAsText(e.target.files[0]);
+};
+
+function updateTopNGrams() {
+    const n = parseInt(document.getElementById('ngramSize').value), hide = document.getElementById('hideStopwords').checked, sortFreq = document.getElementById('sortFreq').checked, freqs = {};
+    preprocessedData.forEach(d => {
+        for (let i = 0; i <= d.norm.length - n; i++) {
+            const gram = d.norm.slice(i, i + n);
+            if (hide && (stopWords.has(gram[0]) || stopWords.has(gram[n-1]))) continue;
+            const key = gram.join(" ");
+            freqs[key] = (freqs[key] || 0) + 1;
+        }
+    });
+    let pool = Object.entries(freqs).sort((a,b) => b[1] - a[1]).slice(0, 50);
+    if (!sortFreq) pool.sort((a,b) => a[0].localeCompare(b[0]));
+    const select = document.getElementById('topNgramSelect');
+    select.innerHTML = '<option value="">Select pattern...</option>';
+    pool.forEach(([k, v]) => {
+        const opt = document.createElement('option');
+        opt.value = k; opt.dataset.count = v; opt.innerText = `${k.toUpperCase()} (${v})`;
+        select.appendChild(opt);
+    });
+}
+
+function processText(doHistory) {
+    const target = document.getElementById('keyword').value.toLowerCase().trim();
+    if (!target || !preprocessedData.length) return;
+    if (doHistory) updateHistory(target);
+    const targetTokens = target.split(/\s+/), span = parseInt(document.getElementById('windowSpan').value);
+    const lefts = [], rights = [];
+    currentMatches = [];
+    const hide = document.getElementById('hideStopwords').checked;
+    preprocessedData.forEach(d => {
+        for (let i = 0; i <= d.norm.length - targetTokens.length; i++) {
+            if (d.norm.slice(i, i + targetTokens.length).join(" ") === target) {
+                currentMatches.push({ 
+                    file: d.fileName, tokens: d.tokens, start: i, end: i + targetTokens.length,
+                    leftStr: d.tokens.slice(Math.max(0, i-12), i).join(" "),
+                    rightStr: d.tokens.slice(i + targetTokens.length, i + targetTokens.length + 12).join(" "),
+                    focusStr: d.tokens.slice(i, i + targetTokens.length).join(" ")
+                });
+                let lSeq = d.norm.slice(Math.max(0, i-span), i).reverse();
+                let rSeq = d.norm.slice(i + targetTokens.length, i + targetTokens.length + span);
+                if (hide) { lSeq = lSeq.filter(w => !stopWords.has(w)); rSeq = rSeq.filter(w => !stopWords.has(w)); }
+                lefts.push(lSeq); rights.push(rSeq);
+            }
+        }
+    });
+    renderTree(lefts, rights, target);
+    renderTable();
+}
+
+function renderTree(lData, rData, kw) {
+    const svg = d3.select("#wordTree");
+    svg.selectAll("*").remove();
+    const g = svg.append("g").attr("id", "main-g");
+    svg.call(zoom);
+    const fSize = document.getElementById('fontSizeSlider').value;
+    const trieL = buildTrie(lData), trieR = buildTrie(rData);
+    const layout = d3.tree().nodeSize([45, 280]);
+    const rootL = d3.hierarchy(trieL), rootR = d3.hierarchy(trieR);
+    layout(rootL); layout(rootR);
+
+    g.selectAll(".link").data(rootL.links().concat(rootR.links())).enter().append("path")
+     .attr("fill", "none").attr("stroke", "#cbd5e1").attr("stroke-width", "1.5")
+     .attr("d", d => {
+        const isL = rootL.descendants().includes(d.source);
+        return d3.linkHorizontal().x(x => isL ? -x.y : x.y).y(y => y.x)(d);
+     });
+
+    const drawSide = (root, side) => {
+        const nodes = g.selectAll(`.n-${side}`).data(root.descendants()).enter().append("g")
+            .attr("transform", d => `translate(${side==='left' ? -d.y : d.y}, ${d.x})`)
+            .style("cursor", "pointer")
+            .on("click", (e, d) => {
+                if (d.depth === 0) return;
+                const path = d.ancestors().reverse().map(n => n.data.name).filter(n => n);
+                const currentKw = document.getElementById('keyword').value;
+
+                // STRICT STATE-LOCKED CLICK LOGIC
+                if (clickTimer) {
+                    // DOUBLE CLICK detected
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                    document.getElementById('keyword').value = d.data.name;
+                    processText(true);
+                } else {
+                    // Start timer for potential SINGLE CLICK
+                    clickTimer = setTimeout(() => {
+                        document.getElementById('keyword').value = (side === 'left') 
+                            ? path.reverse().join(" ") + " " + currentKw 
+                            : currentKw + " " + path.join(" ");
+                        processText(true);
+                        clickTimer = null;
+                    }, 250); 
+                }
+            });
+
+        nodes.filter(d => d.depth > 0).append("circle").attr("r", 5).attr("fill", "white").attr("stroke", "#2563eb").attr("stroke-width", "2");
+        nodes.filter(d => d.depth > 0).append("text").attr("dy", 4).attr("x", 12).style("font-size", fSize + "px").text(d => `${d.data.name} (${d.data.count})`);
+    };
+    drawSide(rootL, 'left'); drawSide(rootR, 'right');
+
+    const center = g.append("g");
+    const centerText = center.append("text").attr("text-anchor", "middle").attr("dy", "0.35em")
+        .style("font-weight", "bold").style("font-size", (parseInt(fSize) + 4) + "px").text(kw.toUpperCase());
+    const bbox = centerText.node().getBBox();
+    center.insert("rect", "text").attr("x", bbox.x-25).attr("y", bbox.y-12).attr("width", bbox.width+50).attr("height", bbox.height+24).attr("rx", 8)
+        .attr("fill", "#fef3c7").attr("stroke", "#d97706").attr("stroke-width", "2.5");
+    
+    setTimeout(() => {
+        const b = g.node().getBBox(), w = document.getElementById('viewport').clientWidth, h = 850;
+        const s = Math.min(1.4, 0.85 / Math.max(b.width/w, b.height/h));
+        svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity.translate(w/2 - s*(b.x + b.width/2), h/2 - s*(b.y + b.height/2)).scale(s));
+    }, 50);
+}
+
+function renderTable() {
+    const body = document.getElementById('concordanceBody'), filter = document.getElementById('tableSearch').value.toLowerCase();
+    body.innerHTML = "";
+    let display = currentMatches.filter(m => m.file.toLowerCase().includes(filter) || m.leftStr.toLowerCase().includes(filter) || m.rightStr.toLowerCase().includes(filter));
+    if (isFileSorted) display.sort((a,b) => a.file.localeCompare(b.file));
+    document.getElementById('matchCount').innerText = `(${display.length} of ${currentMatches.length})`;
+    display.forEach(m => {
+        const row = body.insertRow();
+        row.innerHTML = `<td style="font-weight:600; color:#2563eb;">${m.file}</td><td class="col-left">${m.leftStr}</td><td class="col-focus">${m.focusStr}</td><td class="col-right">${m.rightStr}</td>`;
+    });
+}
+
+function saveAsPNG() {
+    const svg = document.getElementById('wordTree');
+    const serializer = new XMLSerializer();
+    const clone = svg.cloneNode(true);
+    const gClone = clone.querySelector("#main-g");
+    gClone.setAttribute("transform", "translate(0,0) scale(1)");
+    document.body.appendChild(clone);
+    const bbox = gClone.getBBox();
+    document.body.removeChild(clone);
+    const padding = 50;
+    const width = bbox.width + (padding * 2), height = bbox.height + (padding * 2);
+    clone.setAttribute("width", width); clone.setAttribute("height", height);
+    clone.setAttribute("viewBox", `${bbox.x - padding} ${bbox.y - padding} ${width} ${height}`);
+    const svgData = serializer.serializeToString(clone);
+    const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
+    const img = new Image();
+    img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
+    img.onload = () => {
+        canvas.width = width * 2; canvas.height = height * 2; ctx.scale(2, 2);
+        ctx.fillStyle = "white"; ctx.fillRect(0, 0, width, height); ctx.drawImage(img, 0, 0);
+        const a = document.createElement("a");
+        a.download = `WordTree_${document.getElementById('keyword').value}.png`;
+        a.href = canvas.toDataURL("image/png"); a.click();
+    };
+}
+
+function buildTrie(data) {
+    const root = { name: "", children: [], count: data.length }, maxB = parseInt(document.getElementById('maxBranches').value);
+    data.forEach(seq => {
+        let curr = root;
+        seq.forEach(word => {
+            let child = curr.children.find(c => c.name === word);
+            if (!child) { child = { name: word, children: [], count: 0 }; curr.children.push(child); }
+            child.count++; curr = child;
+        });
+    });
+    const sort = (n) => { n.children.sort((a,b) => b.count - a.count).splice(maxB); n.children.forEach(sort); };
+    sort(root); return root;
+}
+
+function handleTopSelect(v) { if(v) { document.getElementById('keyword').value = v; processText(true); } }
+function toggleFileSort() { isFileSorted = !isFileSorted; document.getElementById('groupToggle').classList.toggle('active', isFileSorted); renderTable(); }
+function updateFontSize(val) { d3.selectAll(".node text").style("font-size", val + "px"); }
+function updateHistory(k) { if(historyArr[0]===k) return; historyArr = [k, ...historyArr.filter(i=>i!==k)].slice(0,30); const l = document.getElementById('history-list'); l.innerHTML=""; historyArr.forEach(h=>{ const li=document.createElement('li'); li.style.padding="12px"; li.style.cursor="pointer"; li.innerText=h.toUpperCase(); li.onclick=()=>{ document.getElementById('keyword').value=h; processText(false); }; l.appendChild(li); }); }
+function clearHistory() { historyArr=[]; document.getElementById('history-list').innerHTML=""; }
+function saveToCSV() { let csv = "File,Left,Focus,Right\n"; document.querySelectorAll("#concordanceBody tr").forEach(tr => csv += Array.from(tr.cells).map(td => `"${td.innerText.replace(/"/g, '""')}"`).join(",") + "\n"); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = "concordance.csv"; a.click(); }
+function saveTopNgrams() {
+    const n = document.getElementById('ngramSize').value;
+    let csv = "Ngram,Frequency\n";
+    Array.from(document.getElementById('topNgramSelect').options).slice(1).forEach(o => csv += `"${o.value.toUpperCase()}",${o.dataset.count}\n`);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'})); a.download = `${n}-Gram.csv`; a.click();
+}
+</script>
+</body>
+</html>
